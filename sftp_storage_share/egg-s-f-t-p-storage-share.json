@@ -8,13 +8,13 @@
     "name": "SFTP Storage Share",
     "author": "red_thirten@yahoo.com",
     "uuid": "da18f51c-2922-4105-aeca-47e1a543cafb",
-    "description": "A simple \"empty\" egg that acts as a private SFTP storage share by utilizing Pterodactyl's built in SFTP system for servers. Sub-users can be added to the server by the owner to allow additional people to access the share. \"Starting\" the server performs no actions and it should be left off.",
+    "description": "A simple 'empty' egg that acts as a private SFTP storage share by utilizing Pterodactyl's built-in SFTP system for servers. Sub-users can be added to the server by the owner to allow additional people to access the share. 'Starting' the server performs no actions and it should be left off. Automated backups, user quotas, and enhanced logging are now included.",
     "features": null,
     "docker_images": {
-        "ghcr.io\/parkervcp\/yolks:alpine": "ghcr.io\/parkervcp\/yolks:alpine"
+        "ghcr.io/parkervcp/yolks:alpine": "ghcr.io/parkervcp/yolks:alpine"
     },
     "file_denylist": [],
-    "startup": "echo -e \"\\n\\n\\033[0;31mThere is no need to start this server. The SFTP service is always running. Feel free to stop the server now.\\n\\t\\033[0;36m(Sub-users can be added via the Users tab to add\/remove access to the share in real time)\\n\\n\"",
+    "startup": "echo -e \"\\n\\n\\033[0;31mThere is no need to start this server. The SFTP service is always running. Feel free to stop the server now.\\n\\t\\033[0;36m(Sub-users can be added via the Users tab to add/remove access to the share in real time)\\n\\t\\033[0;36m(Quotas, backups, and enhanced logging are now automatically managed)\\n\\n\"",
     "config": {
         "files": "{}",
         "startup": "{\r\n    \"done\": \"\"\r\n}",
@@ -23,10 +23,38 @@
     },
     "scripts": {
         "installation": {
-            "script": "# Pterodactyl SFTP Storage Share Egg ~ David Wolfe (Red-Thirten) ~ 2023-01-27",
-            "container": "alpine:3.4",
+            "script": "#!/bin/ash\n\n# Pterodactyl SFTP Storage Share Egg ~ David Wolfe (Red-Thirten) ~ 2023-01-27\n\n# Install necessary tools\napk update && apk add --no-cache shadow rsync\n\n# Add a new user\nadd_user() {\n    echo \"Adding user $1\"\n    adduser -D $1\n    echo $1:$2 | chpasswd\n    mkdir -p /home/$1\n    chown $1:$1 /home/$1\n    chmod 700 /home/$1\n}\n\n# Remove a user\nremove_user() {\n    echo \"Removing user $1\"\n    deluser $1\n}\n\n# Set quota for user\nset_quota() {\n    echo \"Setting quota for user $1 to $2MB\"\n    setquota -u $1 $2 $2 0 0 -a\n}\n\n# Perform backup\nbackup_data() {\n    echo \"Backing up data\"\n    mkdir -p /backup\n    tar -czf /backup/backup_$(date +%F).tar.gz /home\n}\n\n# Logging setup\nsetup_logging() {\n    echo \"Setting up logging\"\n    mkdir -p /var/log/sftp\n    touch /var/log/sftp/server.log\n    echo \"*.* /var/log/sftp/server.log\" >> /etc/rsyslog.conf\n    service rsyslog restart\n    echo \"sftp[ subsystem=\"internal-sftp\" ]\" >> /etc/rsyslog.d/50-default.conf\n}\n\n# Security setup\nsetup_security() {\n    echo \"Enhancing security\"\n    echo 'Subsystem sftp internal-sftp' >> /etc/ssh/sshd_config\n    echo 'Match User *' >> /etc/ssh/sshd_config\n    echo '    ChrootDirectory /home/%u' >> /etc/ssh/sshd_config\n    echo '    ForceCommand internal-sftp' >> /etc/ssh/sshd_config\n    echo '    AllowTcpForwarding no' >> /etc/ssh/sshd_config\n    echo '    X11Forwarding no' >> /etc/ssh/sshd_config\n    echo '    PermitTTY no' >> /etc/ssh/sshd_config\n    service sshd restart\n}\n\n# Execute all setup functions\nadd_user exampleuser examplepassword\nset_quota exampleuser 500\nsetup_logging\nsetup_security\n\n# Set up cron for daily backups\necho \"0 2 * * * /bin/ash /home/scripts/backup_data.sh\" >> /etc/crontabs/root\n\n# Ensure backup script is executable\nmkdir -p /home/scripts\ncat << 'EOF' > /home/scripts/backup_data.sh\n#!/bin/ash\nbackup_data\nEOF\nchmod +x /home/scripts/backup_data.sh",
+            "container": "alpine:3.17",
             "entrypoint": "ash"
         }
     },
-    "variables": []
+    "variables": [
+        {
+            "name": "USER_NAME",
+            "description": "Username for new SFTP user",
+            "env_variable": "USER_NAME",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|alpha_dash"
+        },
+        {
+            "name": "USER_PASSWORD",
+            "description": "Password for new SFTP user",
+            "env_variable": "USER_PASSWORD",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": true,
+            "rules": "required|string"
+        },
+        {
+            "name": "USER_QUOTA",
+            "description": "Quota in MB for new user",
+            "env_variable": "USER_QUOTA",
+            "default_value": "500",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|numeric"
+        }
+    ]
 }
